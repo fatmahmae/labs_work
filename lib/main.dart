@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:encrypted_shared_preferences/encrypted_shared_preferences.dart';
+import 'data_repository.dart';
+import 'profile_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -11,13 +13,20 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Week4',
+      title: 'Week5',
+      debugShowCheckedModeBanner: false,
+
+
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const MyHomePage(title: 'Week5 Login'),
+        '/profile': (context) => const ProfilePage(),
+      },
+
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Week4 Login'),
-      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -31,16 +40,18 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  // controllers for the two textfields
   late TextEditingController loginCtrl;
   late TextEditingController passCtrl;
 
-  // Lab4 encrypted shared prefs
+  // EncryptedSharedPreferences
   final EncryptedSharedPreferences prefs = EncryptedSharedPreferences();
 
-  // image starts as question mark
+  //lab02 picture
   String imageSource = "images/question-mark.png";
   String imageLabel = "Question mark";
+
+ //the right password from lab02
+  static const String correctPassword = "ASDF";
 
   @override
   void initState() {
@@ -48,19 +59,18 @@ class _MyHomePageState extends State<MyHomePage> {
     loginCtrl = TextEditingController();
     passCtrl = TextEditingController();
 
-    // Lab4: load saved login/password on startup
-    _loadSavedLogin();
+    _loadSavedLoginAndRepo();
   }
 
-  Future<void> _loadSavedLogin() async {
-    final savedLogin = await prefs.getString("login");
-    final savedPass = await prefs.getString("password");
+  Future<void> _loadSavedLoginAndRepo() async {
+    // Load all saved data into repository
+    final loaded = await DataRepository.loadData();
 
-    if (savedLogin != null && savedPass != null) {
-      loginCtrl.text = savedLogin;
-      passCtrl.text = savedPass;
+    if (loaded) {
+      loginCtrl.text = DataRepository.loginName;
+      passCtrl.text = DataRepository.password;
 
-      // snackbar must be slightly delayed until page is ready
+      // Snackbar at startup needs delay
       Future.delayed(Duration.zero, () {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Previous login and password loaded.")),
@@ -76,60 +86,69 @@ class _MyHomePageState extends State<MyHomePage> {
     super.dispose();
   }
 
-  // Your original Lab2 behavior (image changes based on password)
-  void doLogin() {
-    String typedPassword = passCtrl.text;
+  // Lab2 image behavior
+  void _updateImageBasedOnPassword() {
+    final typedPassword = passCtrl.text;
 
     setState(() {
-      if (typedPassword == "ASDF") {
-        imageSource = "images/idea.png"; // light bulb
+      if (typedPassword != '') {
+        imageSource = "images/idea.png";
         imageLabel = "Light bulb";
       } else {
-        imageSource = "images/stop.png"; // stop sign
+        imageSource = "images/stop.png";
         imageLabel = "Stop sign";
       }
     });
   }
 
-  // Lab4: show dialog asking to save or clear
   void _onLoginPressed() {
+    // AlertDialog asking to save login/pass
     showDialog(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         title: const Text("Save Login?"),
-        content: const Text(
-          "Do you want to save your username and password for next time you run the app?",
-        ),
+        content: const Text("Do you want to save your username and password for next time?"),
         actions: [
           TextButton(
             onPressed: () async {
-              // NO -> clear saved encrypted data
+              // no clear encrypted saved login data
               await prefs.remove("login");
               await prefs.remove("password");
+              await DataRepository.clearLogin();
 
-              // close dialog
               Navigator.pop(ctx);
 
-              // clear fields so next start it will be empty
               loginCtrl.clear();
               passCtrl.clear();
 
-              // run your lab2 logic (image change)
-              doLogin();
+              _updateImageBasedOnPassword();
+
+
             },
             child: const Text("No"),
           ),
           TextButton(
             onPressed: () async {
-              // YES -> save encrypted
+              // yes save encrypted login data
               await prefs.setString("login", loginCtrl.text);
               await prefs.setString("password", passCtrl.text);
+              await DataRepository.saveLogin(loginCtrl.text, passCtrl.text);
 
-              // close dialog
               Navigator.pop(ctx);
 
-              // run your lab2 logic (image change)
-              doLogin();
+              _updateImageBasedOnPassword();
+
+              // “Successful login” -> go to second page if password correct
+              if (passCtrl.text == correctPassword) {
+                // Put loginName in repository so next page can show it
+                DataRepository.loginName = loginCtrl.text;
+
+                Navigator.pushNamed(context, '/profile');
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Login failed: password incorrect.")),
+                );
+              }
             },
             child: const Text("Yes"),
           ),
@@ -163,7 +182,7 @@ class _MyHomePageState extends State<MyHomePage> {
               padding: const EdgeInsets.fromLTRB(40, 0, 40, 12),
               child: TextField(
                 controller: passCtrl,
-                obscureText: true, // IMPORTANT: hides password
+                obscureText: true,
                 decoration: const InputDecoration(
                   labelText: "Password",
                   border: OutlineInputBorder(),
@@ -175,12 +194,14 @@ class _MyHomePageState extends State<MyHomePage> {
               child: const Text("Login"),
             ),
             const SizedBox(height: 16),
+
+            // Lab2 image area (kept)
             Semantics(
               label: imageLabel,
               child: Image.asset(
                 imageSource,
-                width: 300,
-                height: 300,
+                width: 220,
+                height: 220,
               ),
             ),
           ],
