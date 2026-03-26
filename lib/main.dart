@@ -1,121 +1,212 @@
 import 'package:flutter/material.dart';
+import 'app_database.dart';
+import 'shopping_item.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  final database =
+  await $FloorAppDatabase.databaseBuilder('shopping_database.db').build();
+
+  runApp(MyApp(database: database));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final AppDatabase database;
 
-  // This widget is the root of your application.
+  const MyApp({super.key, required this.database});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Lab08',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      debugShowCheckedModeBanner: false,
+      home: MyHomePage(
+        title: 'Shopping List',
+        database: database,
+      ),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
   final String title;
+  final AppDatabase database;
+
+  const MyHomePage({
+    super.key,
+    required this.title,
+    required this.database,
+  });
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  List<ShoppingItem> shoppingList = [];
 
-  void _incrementCounter() {
+  late TextEditingController itemController;
+  late TextEditingController quantityController;
+
+  @override
+  void initState() {
+    super.initState();
+    itemController = TextEditingController();
+    quantityController = TextEditingController();
+    loadItemsFromDatabase();
+  }
+
+  Future<void> loadItemsFromDatabase() async {
+    final items = await widget.database.shoppingItemDao.findAllItems();
+
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      shoppingList = items;
     });
+  }
+
+  Future<void> addItem() async {
+    if (itemController.text.isNotEmpty && quantityController.text.isNotEmpty) {
+      final newItem = ShoppingItem(
+        ShoppingItem.nextId,
+        itemController.text,
+        quantityController.text,
+      );
+
+      await widget.database.shoppingItemDao.insertItem(newItem);
+
+      itemController.clear();
+      quantityController.clear();
+
+      await loadItemsFromDatabase();
+    }
+  }
+
+  Future<void> deleteItem(ShoppingItem item) async {
+    await widget.database.shoppingItemDao.deleteItem(item);
+    await loadItemsFromDatabase();
+  }
+
+  @override
+  void dispose() {
+    itemController.dispose();
+    quantityController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: itemController,
+                    decoration: const InputDecoration(
+                      hintText: "Type the item here",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: quantityController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      hintText: "Type the quantity here",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 1,
+                  child: ElevatedButton(
+                    onPressed: addItem,
+                    child: const Text("Add"),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+          ),
+          Expanded(
+            child: shoppingList.isEmpty
+                ? const Center(
+              child: Text(
+                "There are no items in the list",
+                style: TextStyle(fontSize: 18),
+              ),
+            )
+                : ListView.builder(
+              itemCount: shoppingList.length,
+              itemBuilder: (context, index) {
+                final item = shoppingList[index];
+
+                return GestureDetector(
+                  onLongPress: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text("Delete this item?"),
+                        content: Text(
+                          "Do you want to delete ${item.itemName}?",
+                        ),
+                        actions: [
+                          FilledButton(
+                            onPressed: () async {
+                              Navigator.pop(context);
+                              await deleteItem(item);
+                            },
+                            child: const Text("Yes"),
+                          ),
+                          FilledButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                            },
+                            child: const Text("No"),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Text(
+                          "${index + 1}: ${item.itemName}",
+                          style: const TextStyle(fontSize: 18),
+                        ),
+                        Text(
+                          "quantity: ${item.quantity}",
+                          style: const TextStyle(fontSize: 18),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
