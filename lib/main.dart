@@ -3,7 +3,9 @@ import 'app_database.dart';
 import 'shopping_item.dart';
 
 void main() async {
+
   WidgetsFlutterBinding.ensureInitialized();
+
 
   final database =
   await $FloorAppDatabase.databaseBuilder('shopping_database.db').build();
@@ -19,7 +21,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Lab08',
+      title: 'Lab09',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
@@ -47,28 +49,45 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  // This list holds all items loaded from the database
   List<ShoppingItem> shoppingList = [];
 
+  // Controllers let me read and clear the text fields
   late TextEditingController itemController;
   late TextEditingController quantityController;
+
+  // This variable stores the item the user tapped on
+  ShoppingItem? selectedItem;
 
   @override
   void initState() {
     super.initState();
+
+    // Initialize the text field controllers
     itemController = TextEditingController();
     quantityController = TextEditingController();
+
+    // Load saved items when the app opens
     loadItemsFromDatabase();
   }
 
   Future<void> loadItemsFromDatabase() async {
+    // Get all shopping items from the Floor database
     final items = await widget.database.shoppingItemDao.findAllItems();
 
     setState(() {
       shoppingList = items;
+
+      // If the selected item was deleted, clear it
+      if (selectedItem != null &&
+          !shoppingList.any((item) => item.id == selectedItem!.id)) {
+        selectedItem = null;
+      }
     });
   }
 
   Future<void> addItem() async {
+    // Only add the item if both fields have text
     if (itemController.text.isNotEmpty && quantityController.text.isNotEmpty) {
       final newItem = ShoppingItem(
         ShoppingItem.nextId,
@@ -76,29 +95,192 @@ class _MyHomePageState extends State<MyHomePage> {
         quantityController.text,
       );
 
+      // Insert the new item into the database
       await widget.database.shoppingItemDao.insertItem(newItem);
 
+      // Clear the text fields after adding
       itemController.clear();
       quantityController.clear();
 
+      // Reload the list so the new item appears on screen
       await loadItemsFromDatabase();
     }
   }
 
   Future<void> deleteItem(ShoppingItem item) async {
+    // Remove the item from the database
     await widget.database.shoppingItemDao.deleteItem(item);
+
+    // Reload the list after deleting
     await loadItemsFromDatabase();
+  }
+
+  void closeDetails() {
+    // This hides the details page by clearing the selected item
+    setState(() {
+      selectedItem = null;
+    });
   }
 
   @override
   void dispose() {
+    // Clean up the controllers when the widget is removed
     itemController.dispose();
     quantityController.dispose();
     super.dispose();
   }
 
+  bool isWideScreen(BuildContext context) {
+    // I use this to decide if the app should show
+    // list + details side by side or only one page at a time
+    final screenWidth = MediaQuery.of(context).size.width;
+    final orientation = MediaQuery.of(context).orientation;
+
+    return screenWidth >= 700 || orientation == Orientation.landscape;
+  }
+
+  Widget buildInputArea() {
+    // This is the top input section with 2 text fields and the Add button
+    return Padding(
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: TextField(
+              controller: itemController,
+              decoration: const InputDecoration(
+                hintText: "Type the item here",
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 3,
+            child: TextField(
+              controller: quantityController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                hintText: "Type the quantity here",
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 1,
+            child: ElevatedButton(
+              onPressed: addItem,
+              child: const Text("Add"),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildShoppingList() {
+    // If there are no items, show a message in the center
+    if (shoppingList.isEmpty) {
+      return const Center(
+        child: Text(
+          "There are no items in the list",
+          style: TextStyle(fontSize: 18),
+        ),
+      );
+    }
+
+    // Otherwise show all items in a scrollable list
+    return ListView.builder(
+      itemCount: shoppingList.length,
+      itemBuilder: (context, index) {
+        final item = shoppingList[index];
+
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: ListTile(
+            title: Text("${index + 1}: ${item.itemName}"),
+            subtitle: Text("Quantity: ${item.quantity}"),
+
+            // In Week9 I changed the interaction to tap instead of long press
+            onTap: () {
+              setState(() {
+                selectedItem = item;
+              });
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget buildDetailsPage() {
+    // If nothing is selected yet, show a simple message
+    if (selectedItem == null) {
+      return const Center(
+        child: Text(
+          "Select an item to see details",
+          style: TextStyle(fontSize: 18),
+        ),
+      );
+    }
+
+    // This page shows the selected item's full details
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Item Details",
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            "Item Name: ${selectedItem!.itemName}",
+            style: const TextStyle(fontSize: 20),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            "Quantity: ${selectedItem!.quantity}",
+            style: const TextStyle(fontSize: 20),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            "Database ID: ${selectedItem!.id}",
+            style: const TextStyle(fontSize: 20),
+          ),
+          const SizedBox(height: 30),
+          Row(
+            children: [
+              ElevatedButton(
+                onPressed: () async {
+                  // Save the selected item first, then delete it
+                  final itemToDelete = selectedItem!;
+                  await deleteItem(itemToDelete);
+                },
+                child: const Text("Delete"),
+              ),
+              const SizedBox(width: 15),
+              OutlinedButton(
+                onPressed: closeDetails,
+                child: const Text("Close"),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool wideScreen = isWideScreen(context);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
@@ -106,105 +288,29 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
+          buildInputArea(),
+          Expanded(
+            child: wideScreen
+            // On tablet/desktop, show list and details side by side
+                ? Row(
               children: [
                 Expanded(
-                  flex: 3,
-                  child: TextField(
-                    controller: itemController,
-                    decoration: const InputDecoration(
-                      hintText: "Type the item here",
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
+                  flex: 2,
+                  child: buildShoppingList(),
                 ),
-                const SizedBox(width: 10),
+                const VerticalDivider(width: 1),
                 Expanded(
-                  flex: 3,
-                  child: TextField(
-                    controller: quantityController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      hintText: "Type the quantity here",
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 1,
-                  child: ElevatedButton(
-                    onPressed: addItem,
-                    child: const Text("Add"),
-                  ),
+                  flex: 2,
+                  child: buildDetailsPage(),
                 ),
               ],
-            ),
-          ),
-          Expanded(
-            child: shoppingList.isEmpty
-                ? const Center(
-              child: Text(
-                "There are no items in the list",
-                style: TextStyle(fontSize: 18),
-              ),
             )
-                : ListView.builder(
-              itemCount: shoppingList.length,
-              itemBuilder: (context, index) {
-                final item = shoppingList[index];
-
-                return GestureDetector(
-                  onLongPress: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text("Delete this item?"),
-                        content: Text(
-                          "Do you want to delete ${item.itemName}?",
-                        ),
-                        actions: [
-                          FilledButton(
-                            onPressed: () async {
-                              Navigator.pop(context);
-                              await deleteItem(item);
-                            },
-                            child: const Text("Yes"),
-                          ),
-                          FilledButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                            },
-                            child: const Text("No"),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        Text(
-                          "${index + 1}: ${item.itemName}",
-                          style: const TextStyle(fontSize: 18),
-                        ),
-                        Text(
-                          "quantity: ${item.quantity}",
-                          style: const TextStyle(fontSize: 18),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+            // On phone/portrait:
+            // if no item is selected, show the list
+            // if an item is selected, show the details page
+                : selectedItem == null
+                ? buildShoppingList()
+                : buildDetailsPage(),
           ),
         ],
       ),
